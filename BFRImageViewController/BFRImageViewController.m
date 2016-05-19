@@ -17,6 +17,12 @@
 /*! Each image displayed is shown in its own instance of a BFRImageViewController. This array holds all of those view controllers, one per image. */
 @property (strong, nonatomic) NSMutableArray *imageViewControllers;
 
+/*! Run this block after dismissing this view container. */
+@property (nonatomic, copy) void (^runAfterDismiss)(void);
+
+/*! Run this block before dismissing this view container. Only dismiss if the block return YES. */
+@property (nonatomic, copy) BOOL (^runBeforeDismiss)(void);
+
 /*! Each image is represented via a @c NSURL or an actual @c UIImage. */
 @property (strong, nonatomic) NSArray *images;
 
@@ -36,20 +42,36 @@
 #pragma mark - Initializers
 - (instancetype)initWithImageSource:(NSArray *)images {
     self = [super init];
-    
+
     if (self) {
         NSAssert(images.count > 0, @"You must supply at least one image source to use this class.");
         self.images = images;
         self.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
         self.enableDoneButton = YES;
     }
-    
+
+    return self;
+}
+
+- (instancetype)initWithImageSource:(NSArray *)images beforeDismiss:(BOOL (^ __nullable)(void))before afterDismiss:(void (^ __nullable)(void))after
+{
+    self = [super init];
+
+    if (self) {
+        NSAssert(images.count > 0, @"You must supply at least one image source to use this class.");
+        self.images = images;
+        self.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
+        self.enableDoneButton = YES;
+        self.runAfterDismiss = after;
+        self.runBeforeDismiss = before;
+    }
+
     return self;
 }
 
 - (instancetype)initForPeekWithImageSource:(NSArray *)images {
     self = [super init];
-    
+
     if (self) {
         NSAssert(images.count > 0, @"You must supply at least one image source to use this class.");
         self.images = images;
@@ -57,20 +79,20 @@
         self.enableDoneButton = YES;
         self.usedFor3DTouch = YES;
     }
-    
+
     return self;
 }
 
 #pragma mark - View Lifecycle
 - (void)viewDidLoad {
     [super viewDidLoad];
-    
+
     //View setup
     self.view.backgroundColor = self.isUsingTransparentBackground ? [UIColor clearColor] : [UIColor blackColor];
     if (self.shouldHideStatusBar) {
         [[UIApplication sharedApplication] setStatusBarHidden:YES withAnimation:UIStatusBarAnimationFade];
     }
-    
+
     //Setup image view controllers
     self.imageViewControllers = [NSMutableArray new];
     for (id imgSrc in self.images) {
@@ -80,24 +102,24 @@
         imgVC.disableHorizontalDrag = (self.images.count > 1);
         [self.imageViewControllers addObject:imgVC];
     }
-    
+
     //Set up pager
     self.pagerVC = [[UIPageViewController alloc] initWithTransitionStyle:UIPageViewControllerTransitionStyleScroll navigationOrientation:UIPageViewControllerNavigationOrientationHorizontal options:nil];
     if (self.imageViewControllers.count > 1) {
         self.pagerVC.dataSource = self;
     }
     [self.pagerVC setViewControllers:@[self.imageViewControllers.firstObject] direction:UIPageViewControllerNavigationDirectionForward animated:NO completion:nil];
-    
+
     //Add pager to view hierarchy
     [self addChildViewController:self.pagerVC];
     [[self view] addSubview:[self.pagerVC view]];
     [self.pagerVC didMoveToParentViewController:self];
-    
+
     //Add chrome to UI now if we aren't waiting to be peeked into
     if (!self.isBeingUsedFor3DTouch) {
         [self addChromeToUI];
     }
-    
+
     //Register for touch events on the images/scrollviews to hide UI chrome
     [self registerNotifcations];
 }
@@ -122,41 +144,43 @@
 #pragma mark - Pager Datasource
 - (UIViewController *)pageViewController:(UIPageViewController *)pageViewController viewControllerBeforeViewController:(UIViewController *)viewController {
     NSUInteger index = ((BFRImageContainerViewController *)viewController).pageIndex;
-    
+
     if (index == 0) {
         return nil;
     }
-    
+
     //Update index
     index--;
     BFRImageContainerViewController *vc = self.imageViewControllers[index];
     vc.pageIndex = index;
-    
+
     return vc;
 }
 
 - (UIViewController *)pageViewController:(UIPageViewController *)pageViewController viewControllerAfterViewController:(UIViewController *)viewController {
     NSUInteger index = ((BFRImageContainerViewController *)viewController).pageIndex;
-    
+
     if (index == self.imageViewControllers.count - 1) {
-        
+
         return nil;
     }
-    
+
     //Update index
     index++;
     BFRImageContainerViewController *vc = self.imageViewControllers[index];
     vc.pageIndex = index;
-    
+
     return vc;
 }
 
 #pragma mark - Utility methods
+
 - (void)dismiss {
     self.pagerVC.dataSource = nil;
     self.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
     [[UIApplication sharedApplication] setStatusBarHidden:NO withAnimation:UIStatusBarAnimationFade];
-    [self dismissViewControllerAnimated:YES completion:nil];
+
+    [self handleDoneAction];
 }
 
 - (void)handlePop {
@@ -166,7 +190,21 @@
 }
 
 - (void)handleDoneAction {
-    [self dismissViewControllerAnimated:YES completion:nil];
+    if (self.runBeforeDismiss) {
+        if (self.runBeforeDismiss()) {
+            if (self.runAfterDismiss) {
+                [self dismissViewControllerAnimated:YES completion:self.runAfterDismiss];
+            } else {
+                [self dismissViewControllerAnimated:YES completion:nil];
+            }
+        }
+    } else {
+        if (self.runAfterDismiss) {
+            [self dismissViewControllerAnimated:YES completion:self.runAfterDismiss];
+        } else {
+            [self dismissViewControllerAnimated:YES completion:nil];
+        }
+    }
 }
 
 /*! The images and scrollview are not part of this view controller, so instances of @c BFRimageContainerViewController will post notifications when they are touched for things to happen. */
