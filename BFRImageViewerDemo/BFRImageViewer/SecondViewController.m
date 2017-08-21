@@ -15,9 +15,17 @@
 
 @implementation SecondViewController
 
+- (instancetype) init {
+    if (self = [super init]) {
+        self.title = @"Multiple Images";
+    }
+    
+    return self;
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
-    // Do any additional setup after loading the view, typically from a nib.
+    
     UIButton *openImageFromURL = [UIButton buttonWithType:UIButtonTypeRoundedRect];
     openImageFromURL.translatesAutoresizingMaskIntoConstraints = NO;
     [openImageFromURL setTitle:@"Open Images" forState:UIControlStateNormal];
@@ -36,12 +44,9 @@
     self.imgURLs = @[url1, url2, url3];
 }
 
-- (void)didReceiveMemoryWarning {
-    // Dispose of any resources that can be recreated.
-}
-
 - (void)openImage {
     BFRImageViewController *imageVC = [[BFRImageViewController alloc] initWithImageSource:self.imgURLs];
+    imageVC.startingIndex = 1;
     [self presentViewController:imageVC animated:YES completion:nil];
 }
 
